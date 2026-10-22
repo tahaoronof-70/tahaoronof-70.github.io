@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self' https://folqjzejdjhupclolhpd.supabase.co; form-action 'none'; base-uri 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>دانلودها | برنامه و بازی</title>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
@@ -108,9 +110,25 @@ footer.ft{padding:22px 16px;color:var(--muted);text-align:center;border-top:1px 
 
 <dialog id="adlg"><div class="dh"><h3 id="at">ورود</h3><button data-close="adlg" aria-label="بستن">×</button></div>
 <div class="db"><div class="tabs"><button type="button" id="tl" aria-pressed="true">ورود</button><button type="button" id="tr" aria-pressed="false">ثبت‌نام</button></div>
-<form id="af"><label class="field">نام کاربری<input id="au" required minlength="3" autocomplete="username"></label>
-<label class="field">رمز عبور<input id="ap" type="password" required minlength="6" autocomplete="current-password"></label>
-<div class="msg" id="am" role="alert"></div><button class="dl" id="as" style="width:100%;border:0;cursor:pointer">ورود</button></form></div></dialog>
+<form id="af" autocomplete="off">
+  <div id="regx" hidden><label class="field">نام کاربری (انگلیسی)
+    <input id="au" autocomplete="username"></label></div>
+  <label class="field">ایمیل
+    <input id="ae" type="email" required autocomplete="email"></label>
+  <label class="field">رمز عبور
+    <input id="ap" type="password" required autocomplete="current-password"></label>
+  <div id="regy" hidden>
+    <label class="field">تکرار رمز عبور
+      <input id="ap2" type="password" autocomplete="new-password"></label>
+    <div id="meter" style="font-size:.85rem;color:var(--muted)"></div>
+    <label class="field"><span id="capq"></span>
+      <input id="cap" inputmode="numeric" autocomplete="off"></label>
+    <input id="hp" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px">
+  </div>
+  <div class="msg" id="am" role="alert"></div>
+  <button class="dl" id="as" style="width:100%;border:0;cursor:pointer">ورود</button>
+  <button type="button" class="sec2" id="fg" style="margin-top:10px">رمز را فراموش کرده‌ام</button>
+</form></div></dialog>
 
 <dialog id="pdlg"><div class="dh"><h3 id="pt"></h3><button data-close="pdlg" aria-label="بستن">×</button></div>
 <div class="db"><div class="tabs" id="ptabs"></div><div id="pbody"></div></div></dialog>
@@ -120,6 +138,7 @@ footer.ft{padding:22px 16px;color:var(--muted);text-align:center;border-top:1px 
   <div class="db" id="dbody"></div>
 </dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.109.0/dist/umd/supabase.js"></script>
 <script>
 /* ساختار هر مطلب در items.json:
 { "title":"نام", "cat":"ویندوز", "version":"1.0", "size":"25 MB", "date":"1405/08/01",
@@ -196,64 +215,152 @@ $("mode").onclick=function(){var r=document.documentElement,
   r.dataset.theme=d?"light":"dark"};
 
 
+var SB_URL="https://folqjzejdjhupclolhpd.supabase.co",
+    SB_KEY="sb_publishable_UE9rrl7sC2mQ8uTOsUklXw_v9Pd5oJW";
+var sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY):null;
+var cu=null,favs=[],hist=[],curTab="fav";
 function key(i){return i.id||i.title}
-function load(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
-function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-function hash(salt,pw){
-  if(!(window.crypto&&crypto.subtle))return Promise.resolve(btoa(unescape(encodeURIComponent(salt+pw))));
-  return crypto.subtle.digest("SHA-256",new TextEncoder().encode(salt+pw)).then(function(b){
-    return Array.prototype.map.call(new Uint8Array(b),function(x){return("0"+x.toString(16)).slice(-2)}).join("")});
+function me(){return cu}
+function uname(){return cu?((cu.user_metadata&&cu.user_metadata.username)||String(cu.email||"").split("@")[0]):""}
+function favLabel(k){return favs.indexOf(k)>-1?"★ در علاقه‌مندی‌ها":"☆ افزودن به علاقه‌مندی‌ها"}
+function refreshUser(){$("ubtn").textContent=cu?("پنل من ("+uname()+")"):"ورود / ثبت‌نام"}
+function amsg(t,ok){$("am").style.color=ok?"inherit":"";$("am").textContent=t}
+function loadData(){
+  if(!sb||!cu){favs=[];hist=[];return}
+  Promise.all([
+    sb.from("favorites").select("item_key"),
+    sb.from("downloads").select("item_title,created_at").order("created_at",{ascending:false}).limit(100)
+  ]).then(function(r){
+    if(!r[0].error)favs=r[0].data.map(function(x){return x.item_key});
+    if(!r[1].error)hist=r[1].data;
+    if($("pdlg").open)openPanel(curTab);
+  });
 }
-function me(){var s=load("ds_session",null),u=load("ds_users",{});return s&&u[s]?{name:s,data:u[s],all:u}:null}
-function put(m){m.all[m.name]=m.data;save("ds_users",m.all)}
-function favLabel(k){var m=me();return m&&m.data.fav.indexOf(k)>-1?"★ در علاقه‌مندی‌ها":"☆ افزودن به علاقه‌مندی‌ها"}
-function toggleFav(k,btn){var m=me();if(!m)return;var a=m.data.fav,n=a.indexOf(k);
-  if(n>-1)a.splice(n,1);else a.push(k);put(m);
-  if(btn.id==="fav")btn.textContent=favLabel(k);else openPanel("fav")}
-function logDl(n){var m=me(),i=items[+n];if(!m||!i)return;
-  m.data.hist.push({t:i.title,d:new Date().toLocaleDateString("fa-IR")});m.data.hist=m.data.hist.slice(-100);put(m)}
-function refreshUser(){var m=me();$("ubtn").textContent=m?("پنل من ("+m.name+")"):"ورود / ثبت‌نام"}
+function toggleFav(k,btn){
+  if(!cu||!sb)return;
+  var has=favs.indexOf(k)>-1;
+  var q=has?sb.from("favorites").delete().eq("item_key",k):sb.from("favorites").insert({item_key:k});
+  q.then(function(r){
+    if(r.error)return;
+    if(has)favs.splice(favs.indexOf(k),1);else favs.push(k);
+    if(btn.id==="fav")btn.textContent=favLabel(k);else openPanel("fav");
+  });
+}
+function logDl(n){
+  var i=items[+n];if(!cu||!sb||!i)return;
+  var t=String(i.title).slice(0,200);
+  sb.from("downloads").insert({item_title:t}).then(function(r){
+    if(!r.error)hist.unshift({item_title:t,created_at:new Date().toISOString()});
+  });
+}
 
-var amode="login";
-function setMode(m){amode=m;$("tl").setAttribute("aria-pressed",m==="login");$("tr").setAttribute("aria-pressed",m==="reg");
-  $("as").textContent=m==="login"?"ورود":"ساخت حساب";$("at").textContent=m==="login"?"ورود":"ثبت‌نام";$("am").textContent=""}
+var amode="login",cap=0;
+var COMMON=["password","12345678","123456789","1234567890","qwertyuiop","iloveyou","admin1234","password1","11111111","abc12345","qwerty123","letmein123"];
+function newCap(){var a=3+Math.floor(Math.random()*7),b=3+Math.floor(Math.random()*7);cap=a+b;
+  $("capq").textContent="برای اثبات انسان بودن: "+a+" + "+b+" = ؟"}
+function checkPw(p,u){
+  var e=[];
+  if(p.length<10)e.push("حداقل ۱۰ کاراکتر");
+  if(!/[a-z]/.test(p))e.push("یک حرف کوچک انگلیسی");
+  if(!/[A-Z]/.test(p))e.push("یک حرف بزرگ انگلیسی");
+  if(!/[0-9]/.test(p))e.push("یک عدد");
+  if(!/[^A-Za-z0-9]/.test(p))e.push("یک نماد مثل ! یا @");
+  if(u&&p.toLowerCase().indexOf(u.toLowerCase())>-1)e.push("نباید شامل نام کاربری باشد");
+  if(COMMON.indexOf(p.toLowerCase())>-1||/(.)\1{3,}/.test(p))e.push("رمز خیلی رایج یا تکراری نباشد");
+  return e;
+}
+function setMode(m){
+  amode=m;var r=m==="reg";
+  $("tl").setAttribute("aria-pressed",!r);$("tr").setAttribute("aria-pressed",r);
+  $("regx").hidden=!r;$("regy").hidden=!r;$("fg").hidden=r;
+  $("as").textContent=r?"ساخت حساب":"ورود";$("at").textContent=r?"ثبت‌نام":"ورود";
+  $("ap").autocomplete=r?"new-password":"current-password";
+  amsg("");$("meter").textContent="";if(r)newCap();
+}
 $("tl").onclick=function(){setMode("login")};$("tr").onclick=function(){setMode("reg")};
-function authDone(u){save("ds_session",u);$("af").reset();$("adlg").close();refreshUser()}
-$("af").onsubmit=function(e){e.preventDefault();
-  var u=$("au").value.trim().toLowerCase(),p=$("ap").value,all=load("ds_users",{}),bad="نام کاربری یا رمز عبور درست نیست.";
+$("ap").addEventListener("input",function(){
+  if(amode!=="reg")return;
+  var e=checkPw($("ap").value,$("au").value);
+  $("meter").textContent=e.length?"رمز باید داشته باشد: "+e.join("، "):"رمز قوی است ✓";
+});
+function authDone(u){cu=u;$("af").reset();$("adlg").close();refreshUser();loadData()}
+function errText(er){var m=String(er&&er.message||"");
+  if(/rate|too many|seconds/i.test(m))return "تلاش زیاد بود. کمی بعد دوباره امتحان کنید.";
+  if(/password/i.test(m))return "رمز عبور پذیرفته نشد.";
+  return "ثبت‌نام انجام نشد. دوباره امتحان کنید."}
+$("af").onsubmit=function(e){
+  e.preventDefault();
+  if(!sb){amsg("اتصال به سرور برقرار نیست. اینترنت را بررسی کنید.");return}
+  var em=$("ae").value.trim().toLowerCase(),p=$("ap").value;
+  function fail(t){amsg(t);if(amode==="reg")newCap()}
   if(amode==="reg"){
-    if(all[u]){$("am").textContent="این نام کاربری قبلاً گرفته شده است.";return}
-    var salt=Math.random().toString(36).slice(2);
-    hash(salt,p).then(function(h){all[u]={salt:salt,h:h,fav:[],hist:[],created:new Date().toLocaleDateString("fa-IR")};save("ds_users",all);authDone(u)});
+    if($("hp").value)return;
+    var u=$("au").value.trim(),pe=checkPw(p,u);
+    if(!/^[A-Za-z0-9_]{4,20}$/.test(u))return fail("نام کاربری باید ۴ تا ۲۰ حرف انگلیسی، عدد یا _ باشد.");
+    if(pe.length)return fail("رمز ضعیف است: "+pe.join("، "));
+    if(p!==$("ap2").value)return fail("تکرار رمز با رمز یکی نیست.");
+    if(+$("cap").value!==cap)return fail("جواب سؤال انسان بودن درست نیست.");
+    $("as").disabled=true;
+    sb.auth.signUp({email:em,password:p,options:{data:{username:u},emailRedirectTo:location.origin+location.pathname}}).then(function(r){
+      $("as").disabled=false;
+      if(r.error)return fail(errText(r.error));
+      if(r.data.session)authDone(r.data.session.user);
+      else amsg("ایمیل تأیید برای شما فرستاده شد. لینک داخل آن را بزنید و بعد وارد شوید.",true);
+    });
   }else{
-    var r=all[u];if(!r){$("am").textContent=bad;return}
-    hash(r.salt,p).then(function(h){if(h!==r.h){$("am").textContent=bad;return}authDone(u)});
-  }};
-$("ubtn").onclick=function(){if(me())openPanel("fav");else{setMode("login");$("adlg").showModal()}};
+    $("as").disabled=true;
+    sb.auth.signInWithPassword({email:em,password:p}).then(function(r){
+      $("as").disabled=false;
+      if(r.error)return fail("ایمیل یا رمز عبور درست نیست، یا ایمیل هنوز تأیید نشده است.");
+      authDone(r.data.user);
+    });
+  }
+};
+$("fg").onclick=function(){
+  var em=$("ae").value.trim();
+  if(!em||!sb){amsg("اول ایمیل خود را بنویسید.");return}
+  sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname}).then(function(){
+    amsg("اگر این ایمیل ثبت شده باشد، لینک بازیابی رمز برایش فرستاده می‌شود.",true)});
+};
+$("ubtn").onclick=function(){if(cu)openPanel("fav");else{setMode("login");$("adlg").showModal()}};
 
 var PT=[["fav","علاقه‌مندی‌ها"],["hist","دانلودهای من"],["acc","حساب کاربری"]];
 function openPanel(t){
-  var m=me();if(!m)return;
+  if(!cu)return;curTab=t;
   $("pt").textContent="پنل کاربری";
   $("ptabs").innerHTML=PT.map(function(x){return '<button type="button" data-t="'+x[0]+'" aria-pressed="'+(x[0]===t)+'">'+x[1]+'</button>'}).join("");
   var h="",mu='<p style="color:var(--muted)">';
   if(t==="fav"){
-    var l=items.filter(function(i){return m.data.fav.indexOf(key(i))>-1});
+    var l=items.filter(function(i){return favs.indexOf(key(i))>-1});
     h=l.length?l.map(function(i){return '<div class="row"><button class="sec2" data-i="'+items.indexOf(i)+'" data-pclose="1">'+esc(i.title)+'</button><button class="sec2" data-f="'+esc(key(i))+'">حذف</button></div>'}).join(""):mu+'هنوز چیزی ذخیره نکرده‌اید. در صفحهٔ هر مطلب روی ستاره بزنید.</p>';
   }else if(t==="hist"){
-    h=m.data.hist.length?m.data.hist.slice().reverse().map(function(x){return '<div class="row"><span>'+esc(x.t)+'</span><span style="color:var(--muted);font-size:.8rem">'+esc(x.d)+'</span></div>'}).join("")+'<button class="sec2" id="hclr" style="margin-top:10px">پاک کردن تاریخچه</button>':mu+'هنوز دانلودی ثبت نشده است.</p>';
+    h=hist.length?hist.map(function(x){return '<div class="row"><span>'+esc(x.item_title)+'</span><span style="color:var(--muted);font-size:.8rem">'+esc(new Date(x.created_at).toLocaleDateString("fa-IR"))+'</span></div>'}).join("")+'<button class="sec2" id="hclr" style="margin-top:10px">پاک کردن تاریخچه</button>':mu+'هنوز دانلودی ثبت نشده است.</p>';
   }else{
-    h='<p>نام کاربری: <b>'+esc(m.name)+'</b><br>عضویت: '+esc(m.data.created||"")+'</p>'+
-      '<form id="cpf"><label class="field">رمز جدید<input id="np" type="password" minlength="6" required autocomplete="new-password"></label><div class="msg" id="cpm" role="alert"></div><button class="sec2">تغییر رمز</button></form>'+
+    h='<p>نام کاربری: <b>'+esc(uname())+'</b><br>ایمیل: <span dir="ltr">'+esc(cu.email)+'</span></p>'+
+      '<form id="cpf"><label class="field">رمز جدید<input id="np" type="password" required autocomplete="new-password"></label><div class="msg" id="cpm" role="alert"></div><button class="sec2">تغییر رمز</button></form>'+
       '<div class="row" style="margin-top:14px"><button class="sec2" id="lo">خروج</button><button class="sec2" id="del">حذف حساب</button></div>';
   }
   $("pbody").innerHTML=h;
   if(!$("pdlg").open)$("pdlg").showModal();
-  if($("cpf"))$("cpf").onsubmit=function(e){e.preventDefault();var salt=Math.random().toString(36).slice(2);
-    hash(salt,$("np").value).then(function(hh){m.data.salt=salt;m.data.h=hh;put(m);$("cpm").style.color="inherit";$("cpm").textContent="رمز عبور تغییر کرد."})};
-  if($("hclr"))$("hclr").onclick=function(){m.data.hist=[];put(m);openPanel("hist")};
-  if($("lo"))$("lo").onclick=function(){save("ds_session",null);$("pdlg").close();refreshUser()};
-  if($("del"))$("del").onclick=function(){if(confirm("حساب حذف شود؟")){delete m.all[m.name];save("ds_users",m.all);save("ds_session",null);$("pdlg").close();refreshUser()}};
+  if($("cpf"))$("cpf").onsubmit=function(e){
+    e.preventDefault();
+    var pe=checkPw($("np").value,uname());
+    if(pe.length){$("cpm").style.color="";$("cpm").textContent="رمز ضعیف است: "+pe.join("، ");return}
+    sb.auth.updateUser({password:$("np").value}).then(function(r){
+      $("cpm").style.color=r.error?"":"inherit";
+      $("cpm").textContent=r.error?"رمز تغییر نکرد. دوباره امتحان کنید.":"رمز عبور تغییر کرد.";
+      if(!r.error)$("np").value="";
+    });
+  };
+  if($("hclr"))$("hclr").onclick=function(){sb.from("downloads").delete().gt("id",0).then(function(r){if(!r.error){hist=[];openPanel("hist")}})};
+  if($("lo"))$("lo").onclick=function(){sb.auth.signOut().then(function(){$("pdlg").close()})};
+  if($("del"))$("del").onclick=function(){
+    if(!confirm("حساب و همهٔ داده‌هایتان برای همیشه حذف شود؟"))return;
+    sb.rpc("delete_my_account").then(function(r){
+      if(r.error)return;
+      sb.auth.signOut().then(function(){$("pdlg").close()});
+    });
+  };
 }
 
 document.addEventListener("click",function(e){
@@ -274,6 +381,14 @@ $("q").addEventListener("input",function(){
   $("sug").innerHTML=s.map(function(i){return '<button type="button" data-sg="'+items.indexOf(i)+'">'+esc(i.title)+'</button>'}).join("");
 });
 $("sort").onchange=function(){sortBy=this.value;page=1;draw()};
+
+if(sb){
+  sb.auth.getSession().then(function(r){cu=r.data.session?r.data.session.user:null;refreshUser();loadData()});
+  sb.auth.onAuthStateChange(function(ev,s){
+    cu=s?s.user:null;refreshUser();
+    setTimeout(function(){loadData();if(ev==="PASSWORD_RECOVERY"&&cu)openPanel("acc")},0);
+  });
+}
 refreshUser();
 
 fetch("items.json").then(function(r){return r.ok?r.json():[]}).catch(function(){return[]})
